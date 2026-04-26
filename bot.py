@@ -18,6 +18,7 @@ from deep_translator import GoogleTranslator
 from deep_translator.exceptions import LanguageNotSupportedException, TranslationNotFound
 from langdetect import detect, DetectorFactory
 import feedparser
+import requests
 from typing import Optional
 from datetime import datetime, timezone
 import os
@@ -29,7 +30,7 @@ DetectorFactory.seed = 0
 DISCORD_TOKEN  = os.getenv("DISCORD_TOKEN", "VOTRE_TOKEN_DISCORD_ICI")
 DEFAULT_LANG   = "fr"
 FJ_CHANNEL_ID  = int(os.getenv("FJ_CHANNEL_ID", "0"))
-FJ_RSS_URL     = os.getenv("FJ_RSS_URL", "https://www.financialjuice.com/feed.aspx")
+FJ_RSS_URL     = os.getenv("FJ_RSS_URL", "https://www.financialjuice.com/feed.aspx?xy=rss")
 FJ_INTERVAL    = int(os.getenv("FJ_INTERVAL", "60"))
 
 LANGUAGES = {
@@ -106,6 +107,21 @@ def do_translate(text: str, target: str, source: str = "auto") -> tuple[str, str
         detected = "?"
     return translated, detected
 
+def fetch_rss(url: str):
+    """Récupère un flux RSS avec des headers HTTP pour éviter les blocages."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; RSSBot/1.0)",
+        "Accept": "application/rss+xml, application/xml, text/xml, */*",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+        resp.raise_for_status()
+        return feedparser.parse(resp.content)
+    except Exception as e:
+        print(f"⚠️ Erreur fetch RSS : {e}")
+        return feedparser.parse(url)
+
+
 def translate_fr(text: str) -> str:
     try:
         return GoogleTranslator(source="auto", target="fr").translate(text) or text
@@ -132,7 +148,7 @@ async def check_fj_rss():
     if not channel:
         return
     try:
-        feed = feedparser.parse(FJ_RSS_URL)
+        feed = fetch_rss(FJ_RSS_URL)
     except Exception as e:
         print(f"❌ Erreur RSS : {e}")
         return
@@ -164,7 +180,7 @@ async def before_fj_rss():
     await bot.wait_until_ready()
     print("🔄 Initialisation RSS Financial Juice...")
     try:
-        feed = feedparser.parse(FJ_RSS_URL)
+        feed = fetch_rss(FJ_RSS_URL)
         for entry in feed.entries:
             uid = getattr(entry, "id", None) or getattr(entry, "link", None) or entry.get("title", "")
             if uid:
@@ -336,7 +352,7 @@ async def mirrors_cmd(ctx: commands.Context):
 async def fjtest_cmd(ctx: commands.Context):
     await ctx.send(f"🔄 Lecture du flux : `{FJ_RSS_URL}`")
     try:
-        feed = feedparser.parse(FJ_RSS_URL)
+        feed = fetch_rss(FJ_RSS_URL)
         await ctx.send(f"📡 Statut HTTP : `{getattr(feed, 'status', '?')}` — Entrées : `{len(feed.entries)}`")
         if feed.bozo:
             await ctx.send(f"⚠️ Erreur RSS : `{feed.bozo_exception}`")
