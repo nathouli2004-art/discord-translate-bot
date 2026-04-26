@@ -9,6 +9,9 @@ Commandes :
   !detect <texte>               - Détecte la langue
   !languages                    - Liste des langues supportées
   !setlang <langue>             - Langue par défaut du channel
+  !mirror <#salon-source> <#salon-cible> <langue>  - Active le miroir automatique
+  !unmirror <#salon-source>     - Désactive le miroir
+  !mirrors                      - Liste les miroirs actifs
   !help_translate               - Aide
 
 Réaction automatique :
@@ -76,6 +79,9 @@ LANG_NAME_TO_CODE.update({
 
 # Langue par défaut par channel (en mémoire)
 channel_default_lang: dict[int, str] = {}
+
+# Miroirs : {id_salon_source: {"target_id": int, "lang": "fr"}}
+mirrors: dict[int, dict] = {}
 
 # ─── SETUP ───────────────────────────────────────────────────────────────────
 
@@ -162,7 +168,101 @@ def build_embed(
 # ─── EVENTS ──────────────────────────────────────────────────────────────────
 
 @bot.event
-async def on_ready():
+async def on_message(message: discord.Message):
+    """Miroir automatique : retraduit les messages du salon source vers le salon cible."""
+    # Toujours traiter les commandes
+    await bot.process_commands(message)
+
+    # Ignorer les messages du bot lui-même
+    if message.author == bot.user:
+        return
+
+    # Ignorer les messages sans texte
+    if not message.content or message.content.startswith("!"):
+        return
+
+    # Vérifier si ce salon est un salon source de miroir
+    if message.channel.id not in mirrors:
+        return
+
+    config = mirrors[message.channel.id]
+    target_channel = bot.get_channel(config["target_id"])
+    if not target_channel:
+        return
+
+    try:
+        translated, detected = do_translate(message.content, config["lang"])
+
+        # Ne pas retraduire si c'est déjà dans la bonne langue
+        if detected == config["lang"]:
+            return
+
+        embed = discord.Embed(color=0x5865F2)
+        embed.set_author(
+            name=message.author.display_name,
+            icon_url=message.author.display_avatar.url,
+        )
+        embed.add_field(
+            name=f"🔤 Original ({lang_display(detected)}) — #{message.channel.name}",
+            value=f"```{message.content[:1000]}```",
+            inline=False,
+        )
+        embed.add_field(
+            name=f"🌐 Traduction → {lang_display(config['lang'])}",
+            value=f"```{translated[:1000]}```",
+            inline=False,
+        )
+        embed.set_footer(text="Propulsé par Google Translate • 100% gratuit")
+        await target_channel.send(embed=embed)
+    except Exception:
+        pass  # On ignore silencieusement pour ne pas spammer en cas d'erreur
+
+
+@bot.command(name="mirror")
+@commands.has_permissions(manage_channels=True)
+async def mirror_cmd(ctx: commands.Context, source: discord.TextChannel, target: discord.TextChannel, lang: str = "fr"):
+    """!mirror <#salon-source> <#salon-cible> <langue> — Active le miroir automatique."""
+    lang_code = resolve_lang(lang)
+    mirrors[source.id] = {"target_id": target.id, "lang": lang_code}
+    await ctx.send(
+        f"✅ Miroir activé !\n"
+        f"Tous les messages de {source.mention} seront traduits en **{lang_display(lang_code)}** dans {target.mention}."
+    )
+
+
+@bot.command(name="unmirror")
+@commands.has_permissions(manage_channels=True)
+async def unmirror_cmd(ctx: commands.Context, source: discord.TextChannel):
+    """!unmirror <#salon-source> — Désactive le miroir."""
+    if source.id in mirrors:
+        del mirrors[source.id]
+        await ctx.send(f"✅ Miroir désactivé pour {source.mention}.")
+    else:
+        await ctx.send(f"❌ Aucun miroir actif sur {source.mention}.")
+
+
+@bot.command(name="mirrors")
+async def mirrors_cmd(ctx: commands.Context):
+    """!mirrors — Liste les miroirs actifs."""
+    if not mirrors:
+        await ctx.send("Aucun miroir actif. Utilise `!mirror <#source> <#cible> <langue>` pour en créer un.")
+        return
+
+    embed = discord.Embed(title="🪞 Miroirs actifs", color=0x5865F2)
+    for source_id, config in mirrors.items():
+        source_ch = bot.get_channel(source_id)
+        target_ch = bot.get_channel(config["target_id"])
+        source_name = source_ch.mention if source_ch else f"<#{source_id}>"
+        target_name = target_ch.mention if target_ch else f"<#{config['target_id']}>"
+        embed.add_field(
+            name=f"{source_name} → {target_name}",
+            value=f"Langue cible : **{lang_display(config['lang'])}**",
+            inline=False,
+        )
+    await ctx.send(embed=embed)
+
+
+
     print(f"✅  {bot.user} est connecté !")
     print(f"   Serveurs : {len(bot.guilds)}")
     await bot.change_presence(
@@ -335,6 +435,9 @@ async def help_cmd(ctx: commands.Context):
             "`!detect <texte>` — Détecte la langue\n"
             "`!languages` — Liste des langues\n"
             "`!setlang <langue>` — Langue par défaut du channel\n"
+            "`!mirror <#source> <#cible> <langue>` — Miroir automatique\n"
+            "`!unmirror <#source>` — Désactive le miroir\n"
+            "`!mirrors` — Liste les miroirs actifs\n"
             "`!help_translate` — Cette aide\n"
         ),
         inline=False,
