@@ -177,14 +177,20 @@ async def status_cmd(ctx: commands.Context):
 @bot.command(name="fjtest")
 async def test_cmd(ctx: commands.Context):
     """!fjtest — Poste manuellement la dernière news du flux."""
+    await ctx.send(f"🔄 Tentative de lecture du flux : `{RSS_URL}`")
     try:
         feed = feedparser.parse(RSS_URL)
+        await ctx.send(f"📡 Statut flux : `{feed.status if hasattr(feed, 'status') else 'inconnu'}` — Entrées trouvées : `{len(feed.entries)}`")
+        if feed.bozo:
+            await ctx.send(f"⚠️ Erreur de parsing RSS : `{feed.bozo_exception}`")
         if not feed.entries:
-            await ctx.send("❌ Aucune entrée dans le flux RSS.")
+            await ctx.send("❌ Aucune entrée dans le flux RSS. Le flux est peut-être vide ou l'URL est incorrecte.")
             return
         entry = feed.entries[0]
         raw   = getattr(entry, "title", "Pas de titre").strip()
+        await ctx.send(f"📝 Titre brut : `{raw}`")
         translated = translate_fr(raw)
+        await ctx.send(f"🌐 Traduit : `{translated}`")
         link  = getattr(entry, "link", "")
         date  = parse_date(entry)
         embed = build_embed(translated, link, date)
@@ -192,6 +198,17 @@ async def test_cmd(ctx: commands.Context):
         await ctx.send(embed=embed)
     except Exception as e:
         await ctx.send(f"❌ Erreur : `{e}`")
+
+
+@bot.command(name="fjurl")
+async def url_cmd(ctx: commands.Context, *, url: str = None):
+    """!fjurl <url> — Teste un autre URL de flux RSS."""
+    global RSS_URL
+    if url:
+        RSS_URL = url.strip()
+        await ctx.send(f"✅ URL mise à jour : `{RSS_URL}`\nRelance `!fjtest` pour tester.")
+    else:
+        await ctx.send(f"URL actuelle : `{RSS_URL}`")
 
 
 # ─── LANCEMENT ───────────────────────────────────────────────────────────────
