@@ -197,23 +197,10 @@ async def on_message(message: discord.Message):
         if detected == config["lang"]:
             return
 
-        embed = discord.Embed(color=0x5865F2)
-        embed.set_author(
-            name=message.author.display_name,
-            icon_url=message.author.display_avatar.url,
+        await target_channel.send(
+            f"{translated}\n"
+            f"-# 🔗 [Message original]({message.jump_url}) • {message.author.display_name}"
         )
-        embed.add_field(
-            name=f"🔤 Original ({lang_display(detected)}) — #{message.channel.name}",
-            value=f"```{message.content[:1000]}```",
-            inline=False,
-        )
-        embed.add_field(
-            name=f"🌐 Traduction → {lang_display(config['lang'])}",
-            value=f"```{translated[:1000]}```",
-            inline=False,
-        )
-        embed.set_footer(text="Propulsé par Google Translate • 100% gratuit")
-        await target_channel.send(embed=embed)
     except Exception:
         pass  # On ignore silencieusement pour ne pas spammer en cas d'erreur
 
