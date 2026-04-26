@@ -1,0 +1,5 @@
+discord.py>=2.3.0
+deep-translator>=1.11.0
+langdetect>=1.0.9
+feedparser>=6.0.0
+requests>=2.31.0
