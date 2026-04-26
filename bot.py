@@ -197,10 +197,15 @@ async def on_message(message: discord.Message):
         if detected == config["lang"]:
             return
 
-        await target_channel.send(
-            f"{translated}\n"
-            f"-# 🔗 [Message original]({message.jump_url}) • {message.author.display_name}"
+        from datetime import datetime
+        embed = discord.Embed(
+            description=translated,
+            color=0x5865F2,
+            timestamp=message.created_at,
         )
+        embed.set_footer(text=message.author.display_name, icon_url=message.author.display_avatar.url)
+        embed.add_field(name="", value=f"[↗ Message original]({message.jump_url})", inline=False)
+        await target_channel.send(embed=embed)
     except Exception:
         pass  # On ignore silencieusement pour ne pas spammer en cas d'erreur
 
@@ -292,8 +297,11 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     async with channel.typing():
         try:
             translated, detected = do_translate(message.content, target)
-            embed = build_embed(message.content, translated, detected, target, member)
-            await message.reply(embed=embed, mention_author=False)
+            await message.reply(
+                f"{translated}\n"
+                f"-# 🌐 Traduit du {lang_display(detected)} → {lang_display(target)}",
+                mention_author=False,
+            )
         except LanguageNotSupportedException:
             await channel.send(f"❌ Langue non supportée : `{target}`", delete_after=10)
         except Exception as e:
@@ -321,8 +329,11 @@ async def translate_cmd(ctx: commands.Context, lang: Optional[str] = None, *, te
     async with ctx.typing():
         try:
             translated, detected = do_translate(text, target)
-            embed = build_embed(text, translated, detected, target, ctx.author)
-            await ctx.reply(embed=embed, mention_author=False)
+            await ctx.reply(
+                f"{translated}\n"
+                f"-# 🌐 Traduit du {lang_display(detected)} → {lang_display(target)}",
+                mention_author=False,
+            )
         except LanguageNotSupportedException:
             await ctx.send(
                 f"❌ Langue inconnue : `{lang}`\n"
